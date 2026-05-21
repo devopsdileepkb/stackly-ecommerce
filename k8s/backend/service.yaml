@@ -1,0 +1,17 @@
+backend:
+  build: ./backend
+  container_name: backend
+  restart: always
+
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+  environment:
+    DB_HOST: mysql
+    DB_USER: root
+    DB_PASSWORD: root
+    DB_NAME: ecommerce
+
+  ports:
+    - "5000:5000"

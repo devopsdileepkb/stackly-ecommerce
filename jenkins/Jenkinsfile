@@ -1,0 +1,93 @@
+pipeline {
+
+    agent any
+
+    environment {
+
+        AWS_REGION = "ap-south-1"
+
+        AWS_ACCOUNT_ID = "YOUR_ACCOUNT_ID"
+
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Clone') {
+
+            steps {
+
+                git branch: 'main',
+                url: 'https://github.com/YOUR_GITHUB/stackly-ecommerce.git'
+            }
+        }
+
+        stage('Build Frontend') {
+
+            steps {
+
+                sh '''
+                docker build -t frontend ./frontend
+                '''
+            }
+        }
+
+        stage('Build Backend') {
+
+            steps {
+
+                sh '''
+                docker build -t backend ./backend
+                '''
+            }
+        }
+
+        stage('Login ECR') {
+
+            steps {
+
+                sh '''
+                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Tag Images') {
+
+            steps {
+
+                sh '''
+                docker tag frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend:$IMAGE_TAG
+
+                docker tag backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Push Images') {
+
+            steps {
+
+                sh '''
+                docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend:$IMAGE_TAG
+
+                docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Deploy Kubernetes') {
+
+            steps {
+
+                sh '''
+                kubectl apply -f k8s/
+
+                kubectl set image deployment/frontend frontend=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/frontend:$IMAGE_TAG
+
+                kubectl set image deployment/backend backend=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/backend:$IMAGE_TAG
+                '''
+            }
+        }
+    }
+}
