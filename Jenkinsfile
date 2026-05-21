@@ -48,7 +48,6 @@ pipeline {
 
                 stage('Frontend') {
                     steps {
-
                         sh """
                         docker build -t frontend ./frontend
                         docker tag frontend:latest $FRONTEND_REPO:$IMAGE_TAG
@@ -59,7 +58,6 @@ pipeline {
 
                 stage('Backend') {
                     steps {
-
                         sh """
                         docker build -t backend ./backend
                         docker tag backend:latest $BACKEND_REPO:$IMAGE_TAG
@@ -76,7 +74,6 @@ pipeline {
 
                 stage('Frontend Push') {
                     steps {
-
                         sh """
                         docker push $FRONTEND_REPO:$IMAGE_TAG
                         docker push $FRONTEND_REPO:latest
@@ -86,12 +83,32 @@ pipeline {
 
                 stage('Backend Push') {
                     steps {
-
                         sh """
                         docker push $BACKEND_REPO:$IMAGE_TAG
                         docker push $BACKEND_REPO:latest
                         """
                     }
+                }
+            }
+        }
+
+        // 🔥 ADDED STAGE (MYSQL FIX)
+        stage('Deploy MySQL') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-devops-creds'
+                ]]) {
+
+                    sh """
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+
+                    kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
+
+                    kubectl apply -f k8s/mysql/ -n stackly
+
+                    kubectl rollout status deployment/mysql -n stackly
+                    """
                 }
             }
         }
@@ -107,8 +124,6 @@ pipeline {
 
                     sh """
                     aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
-
-                    kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
                     kubectl apply -f k8s/frontend-deployment.yaml -n stackly
                     kubectl apply -f k8s/backend-deployment.yaml -n stackly
@@ -134,6 +149,9 @@ pipeline {
                     kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
 
                     kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
+
+                    kubectl rollout status deployment/backend -n stackly --timeout=120s
+                    kubectl rollout status deployment/frontend -n stackly --timeout=120s
                     """
                 }
             }
@@ -153,9 +171,6 @@ pipeline {
 
                     kubectl get pods -n stackly
                     kubectl get svc -n stackly
-
-                    kubectl rollout status deployment/frontend -n stackly
-                    kubectl rollout status deployment/backend -n stackly
                     """
                 }
             }
