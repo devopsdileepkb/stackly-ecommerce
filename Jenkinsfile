@@ -90,6 +90,8 @@ pipeline {
             }
         }
 
+    
+
         stage('Apply Kubernetes Manifests') {
             steps {
                 withCredentials([[
@@ -97,8 +99,9 @@ pipeline {
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
-                    sh """
-                    aws eks update-kubeconfig --region ${AWS_REGION} --name stackly-cluster
+                    sh """                    
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
                     kubectl apply -f k8s/frontend-deployment.yaml -n stackly
                     kubectl apply -f k8s/backend-deployment.yaml -n stackly
