@@ -1,20 +1,12 @@
-mysql:
-  image: mysql:8
-  container_name: mysql
-  restart: always
-
-  environment:
-    MYSQL_ROOT_PASSWORD: root
-    MYSQL_DATABASE: ecommerce
-
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: stackly
+spec:
+  selector:
+    app: mysql
   ports:
-    - "3306:3306"
-
-  volumes:
-    - mysql_data:/var/lib/mysql
-    - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
-
-  healthcheck:
-    test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-    timeout: 20s
-    retries: 10
+    - port: 3306
+      targetPort: 3306
+  type: ClusterIP

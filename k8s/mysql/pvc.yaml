@@ -3,12 +3,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: mysql-pvc
   namespace: stackly
-  labels:
-    app: mysql
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
-  storageClassName: standard
+      storage: 5Gi

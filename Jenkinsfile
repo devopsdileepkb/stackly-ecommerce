@@ -14,10 +14,7 @@ pipeline {
         stage('Set Image Tag') {
             steps {
                 script {
-                    env.IMAGE_TAG = sh(
-                        script: "git rev-parse --short HEAD",
-                        returnStdout: true
-                    ).trim()
+                    env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                 }
             }
         }
@@ -30,11 +27,7 @@ pipeline {
 
         stage('Login to AWS ECR') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-devops-creds'
-                ]]) {
-
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     """
@@ -43,9 +36,7 @@ pipeline {
         }
 
         stage('Build & Tag Images') {
-
             parallel {
-
                 stage('Frontend') {
                     steps {
                         sh """
@@ -69,9 +60,7 @@ pipeline {
         }
 
         stage('Push Images') {
-
             parallel {
-
                 stage('Frontend Push') {
                     steps {
                         sh """
@@ -92,38 +81,29 @@ pipeline {
             }
         }
 
-        // 🔥 ADDED STAGE (MYSQL FIX)
+        /* ✅ MYSQL FIX ADDED */
         stage('Deploy MySQL') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-devops-creds'
-                ]]) {
-
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
-                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
                     kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/mysql/ -n stackly
-
-                    kubectl rollout status deployment/mysql -n stackly
+                    kubectl apply -f k8s/mysql/deployment.yaml -n stackly
+                    kubectl apply -f k8s/mysql/service.yaml -n stackly
+                    kubectl apply -f k8s/mysql/secret.yaml -n stackly
+                    kubectl apply -f k8s/mysql/pvc.yaml -n stackly
                     """
                 }
             }
         }
 
-        stage('Apply Kubernetes Manifests') {
-
+        stage('Apply App Manifests') {
             steps {
-
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-devops-creds'
-                ]]) {
-
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
-                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
                     kubectl apply -f k8s/frontend-deployment.yaml -n stackly
                     kubectl apply -f k8s/backend-deployment.yaml -n stackly
@@ -134,43 +114,30 @@ pipeline {
             }
         }
 
-        stage('Update Kubernetes Deployment') {
-
+        stage('Update Deployment') {
             steps {
-
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-devops-creds'
-                ]]) {
-
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
-                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
                     kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
-
                     kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
-
-                    kubectl rollout status deployment/backend -n stackly --timeout=120s
-                    kubectl rollout status deployment/frontend -n stackly --timeout=120s
                     """
                 }
             }
         }
 
         stage('Verify Deployment') {
-
             steps {
-
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-devops-creds'
-                ]]) {
-
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
-                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
                     kubectl get pods -n stackly
                     kubectl get svc -n stackly
+
+                    kubectl rollout status deployment/frontend -n stackly
+                    kubectl rollout status deployment/backend -n stackly
                     """
                 }
             }
@@ -178,11 +145,9 @@ pipeline {
     }
 
     post {
-
         success {
             echo 'Application deployed successfully to EKS'
         }
-
         failure {
             echo 'Pipeline failed — check logs for details'
         }
