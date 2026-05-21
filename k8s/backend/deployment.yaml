@@ -23,3 +23,19 @@ spec:
 
         ports:
         - containerPort: 5000
+
+        env:
+        - name: DB_HOST
+          value: "your-rds-endpoint.amazonaws.com"
+
+        - name: DB_USER
+          value: "admin"
+
+        - name: DB_PASSWORD
+          value: "your-password"
+
+        - name: DB_NAME
+          value: "ecommerce"
+
+        - name: DB_PORT
+          value: "3306"

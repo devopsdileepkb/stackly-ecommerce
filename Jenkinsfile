@@ -7,165 +7,128 @@ pipeline {
 
         FRONTEND_REPO = "960862432033.dkr.ecr.ap-south-1.amazonaws.com/frontend"
         BACKEND_REPO  = "960862432033.dkr.ecr.ap-south-1.amazonaws.com/backend"
-        NAMESPACE     = "stackly"
     }
 
     stages {
 
-        /* ================= TAG ================= */
+        /* ================= IMAGE TAG ================= */
         stage('Set Image Tag') {
             steps {
                 script {
                     env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    echo "Image Tag: ${env.IMAGE_TAG}"
                 }
             }
         }
 
-        /* ================= VERIFY ================= */
-        stage('Verify Files') {
+        /* ================= VERIFY CODE ================= */
+        stage('Verify Workspace') {
             steps {
                 sh 'ls -la'
             }
         }
 
-        /* ================= ECR LOGIN ================= */
+        /* ================= AWS LOGIN ================= */
         stage('Login to AWS ECR') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    aws ecr get-login-password --region $AWS_REGION | \
+                    docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     """
                 }
             }
         }
 
-        /* ================= BUILD ================= */
-        stage('Build & Tag Images') {
-            parallel {
-                stage('Frontend') {
-                    steps {
-                        sh """
-                        docker build -t frontend ./frontend
-                        docker tag frontend:latest $FRONTEND_REPO:$IMAGE_TAG
-                        docker tag frontend:latest $FRONTEND_REPO:latest
-                        """
-                    }
-                }
+        /* ================= BUILD IMAGES ================= */
+        stage('Build Docker Images') {
+            steps {
+                sh """
+                echo "Building Frontend..."
+                docker build -t frontend ./frontend
 
-                stage('Backend') {
-                    steps {
-                        sh """
-                        docker build -t backend ./backend
-                        docker tag backend:latest $BACKEND_REPO:$IMAGE_TAG
-                        docker tag backend:latest $BACKEND_REPO:latest
-                        """
-                    }
-                }
+                echo "Building Backend..."
+                docker build -t backend ./backend
+                """
             }
         }
 
-        /* ================= PUSH ================= */
-        stage('Push Images') {
-            parallel {
-                stage('Frontend Push') {
-                    steps {
-                        sh """
-                        docker push $FRONTEND_REPO:$IMAGE_TAG
-                        docker push $FRONTEND_REPO:latest
-                        """
-                    }
-                }
+        /* ================= TAG IMAGES ================= */
+        stage('Tag Images') {
+            steps {
+                sh """
+                docker tag frontend:latest $FRONTEND_REPO:$IMAGE_TAG
+                docker tag frontend:latest $FRONTEND_REPO:latest
 
-                stage('Backend Push') {
-                    steps {
-                        sh """
-                        docker push $BACKEND_REPO:$IMAGE_TAG
-                        docker push $BACKEND_REPO:latest
-                        """
-                    }
-                }
+                docker tag backend:latest $BACKEND_REPO:$IMAGE_TAG
+                docker tag backend:latest $BACKEND_REPO:latest
+                """
             }
         }
 
-        /* ================= MYSQL FIX (IMPORTANT) ================= */
-        stage('Deploy MySQL') {
+        /* ================= PUSH IMAGES ================= */
+        stage('Push to ECR') {
+            steps {
+                sh """
+                docker push $FRONTEND_REPO:$IMAGE_TAG
+                docker push $FRONTEND_REPO:latest
+
+                docker push $BACKEND_REPO:$IMAGE_TAG
+                docker push $BACKEND_REPO:latest
+                """
+            }
+        }
+
+        /* ================= DEPLOY TO EKS ================= */
+        stage('Deploy to EKS') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    # Create namespace safely
-                    kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+                    kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
-                    #  IMPORTANT FIX: reset MySQL state (PVC issue fix)
-                    kubectl delete deployment mysql -n $NAMESPACE --ignore-not-found
-                    kubectl delete pvc mysql-pvc -n $NAMESPACE --ignore-not-found
+                    echo "Applying Kubernetes manifests..."
+                    kubectl apply -f k8s/backend/ -n stackly
+                    kubectl apply -f k8s/frontend/ -n stackly
 
-                    # Apply MySQL manifests fresh
-                    kubectl apply -f k8s/mysql/ -n $NAMESPACE
-
-                    # Wait for MySQL properly
-                    kubectl wait --for=condition=available deployment/mysql -n $NAMESPACE --timeout=300s
+                    echo "Updating image versions..."
+                    kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
+                    kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
                     """
                 }
             }
         }
 
-        /* ================= APP DEPLOY ================= */
-        stage('Apply App Manifests') {
-            steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
-                    sh """
-                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
-
-                    kubectl apply -f k8s/backend-deployment.yaml -n $NAMESPACE
-                    kubectl apply -f k8s/frontend-deployment.yaml -n $NAMESPACE
-
-                    kubectl apply -f k8s/backend-service.yaml -n $NAMESPACE
-                    kubectl apply -f k8s/frontend-service.yaml -n $NAMESPACE
-                    """
-                }
-            }
-        }
-
-        /* ================= UPDATE IMAGES ================= */
-        stage('Update Deployment Images') {
-            steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
-                    sh """
-                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
-
-                    kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n $NAMESPACE
-                    kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n $NAMESPACE
-                    """
-                }
-            }
-        }
-
-        /* ================= VERIFY ================= */
+        /* ================= VERIFY DEPLOYMENT ================= */
         stage('Verify Deployment') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl get pods -n $NAMESPACE
-                    kubectl get svc -n $NAMESPACE
+                    echo "Pods:"
+                    kubectl get pods -n stackly
 
-                    kubectl rollout status deployment/frontend -n $NAMESPACE --timeout=300s
-                    kubectl rollout status deployment/backend -n $NAMESPACE --timeout=300s
+                    echo "Services:"
+                    kubectl get svc -n stackly
+
+                    echo "Rollout status:"
+                    kubectl rollout status deployment/frontend -n stackly
+                    kubectl rollout status deployment/backend -n stackly
                     """
                 }
             }
         }
     }
 
+    /* ================= POST ACTION ================= */
     post {
         success {
-            echo 'Application deployed successfully to EKS'
+            echo "SUCCESS: Application deployed to EKS with AWS RDS backend"
         }
         failure {
-            echo 'Pipeline failed — check logs for details'
+            echo "FAILED: Check Jenkins logs"
         }
     }
 }
