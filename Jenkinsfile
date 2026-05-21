@@ -21,7 +21,7 @@ pipeline {
 
         stage('Clone Repository') {
             steps {
-                git branch: 'master',
+                git branch: 'main',
                     url: 'https://github.com/devopsdileepkb/stackly-ecommerce.git'
             }
         }
