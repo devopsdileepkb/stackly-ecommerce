@@ -7,10 +7,12 @@ pipeline {
 
         FRONTEND_REPO = "960862432033.dkr.ecr.ap-south-1.amazonaws.com/frontend"
         BACKEND_REPO  = "960862432033.dkr.ecr.ap-south-1.amazonaws.com/backend"
+        NAMESPACE     = "stackly"
     }
 
     stages {
 
+        /* ================= TAG ================= */
         stage('Set Image Tag') {
             steps {
                 script {
@@ -19,12 +21,14 @@ pipeline {
             }
         }
 
+        /* ================= VERIFY ================= */
         stage('Verify Files') {
             steps {
                 sh 'ls -la'
             }
         }
 
+        /* ================= ECR LOGIN ================= */
         stage('Login to AWS ECR') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
@@ -35,6 +39,7 @@ pipeline {
             }
         }
 
+        /* ================= BUILD ================= */
         stage('Build & Tag Images') {
             parallel {
                 stage('Frontend') {
@@ -59,6 +64,7 @@ pipeline {
             }
         }
 
+        /* ================= PUSH ================= */
         stage('Push Images') {
             parallel {
                 stage('Frontend Push') {
@@ -81,19 +87,25 @@ pipeline {
             }
         }
 
-        /* ================= MYSQL FIX ================= */
+        /* ================= MYSQL FIX (IMPORTANT) ================= */
         stage('Deploy MySQL') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
+                    # Create namespace safely
+                    kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/mysql/ -n stackly
+                    #  IMPORTANT FIX: reset MySQL state (PVC issue fix)
+                    kubectl delete deployment mysql -n $NAMESPACE --ignore-not-found
+                    kubectl delete pvc mysql-pvc -n $NAMESPACE --ignore-not-found
 
-                    # Wait for MySQL to be ready (IMPORTANT FIX)
-                    kubectl rollout status deployment/mysql -n stackly --timeout=180s
+                    # Apply MySQL manifests fresh
+                    kubectl apply -f k8s/mysql/ -n $NAMESPACE
+
+                    # Wait for MySQL properly
+                    kubectl wait --for=condition=available deployment/mysql -n $NAMESPACE --timeout=300s
                     """
                 }
             }
@@ -106,40 +118,42 @@ pipeline {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl apply -f k8s/backend-deployment.yaml -n stackly
-                    kubectl apply -f k8s/frontend-deployment.yaml -n stackly
+                    kubectl apply -f k8s/backend-deployment.yaml -n $NAMESPACE
+                    kubectl apply -f k8s/frontend-deployment.yaml -n $NAMESPACE
 
-                    kubectl apply -f k8s/backend-service.yaml -n stackly
-                    kubectl apply -f k8s/frontend-service.yaml -n stackly
+                    kubectl apply -f k8s/backend-service.yaml -n $NAMESPACE
+                    kubectl apply -f k8s/frontend-service.yaml -n $NAMESPACE
                     """
                 }
             }
         }
 
+        /* ================= UPDATE IMAGES ================= */
         stage('Update Deployment Images') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
-                    kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
+                    kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n $NAMESPACE
+                    kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n $NAMESPACE
                     """
                 }
             }
         }
 
+        /* ================= VERIFY ================= */
         stage('Verify Deployment') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl get pods -n stackly
-                    kubectl get svc -n stackly
+                    kubectl get pods -n $NAMESPACE
+                    kubectl get svc -n $NAMESPACE
 
-                    kubectl rollout status deployment/frontend -n stackly
-                    kubectl rollout status deployment/backend -n stackly
+                    kubectl rollout status deployment/frontend -n $NAMESPACE --timeout=300s
+                    kubectl rollout status deployment/backend -n $NAMESPACE --timeout=300s
                     """
                 }
             }
