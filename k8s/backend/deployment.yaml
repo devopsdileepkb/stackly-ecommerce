@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: YOUR_ECR/backend:latest
+        image: 960862432033.dkr.ecr.ap-south-1.amazonaws.com/backend:latest
 
         ports:
         - containerPort: 5000
