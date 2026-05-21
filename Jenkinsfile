@@ -81,7 +81,7 @@ pipeline {
             }
         }
 
-        /* ✅ MYSQL FIX ADDED */
+        /* ================= MYSQL FIX ================= */
         stage('Deploy MySQL') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
@@ -90,31 +90,33 @@ pipeline {
 
                     kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/mysql/deployment.yaml -n stackly
-                    kubectl apply -f k8s/mysql/service.yaml -n stackly
-                    kubectl apply -f k8s/mysql/secret.yaml -n stackly
-                    kubectl apply -f k8s/mysql/pvc.yaml -n stackly
+                    kubectl apply -f k8s/mysql/ -n stackly
+
+                    # Wait for MySQL to be ready (IMPORTANT FIX)
+                    kubectl rollout status deployment/mysql -n stackly --timeout=180s
                     """
                 }
             }
         }
 
+        /* ================= APP DEPLOY ================= */
         stage('Apply App Manifests') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
                     aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
 
-                    kubectl apply -f k8s/frontend-deployment.yaml -n stackly
                     kubectl apply -f k8s/backend-deployment.yaml -n stackly
-                    kubectl apply -f k8s/frontend-service.yaml -n stackly
+                    kubectl apply -f k8s/frontend-deployment.yaml -n stackly
+
                     kubectl apply -f k8s/backend-service.yaml -n stackly
+                    kubectl apply -f k8s/frontend-service.yaml -n stackly
                     """
                 }
             }
         }
 
-        stage('Update Deployment') {
+        stage('Update Deployment Images') {
             steps {
                 withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-devops-creds' ]]) {
                     sh """
