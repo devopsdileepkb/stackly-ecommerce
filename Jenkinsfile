@@ -129,19 +129,27 @@ pipeline {
                 }
             }
         }
-
         stage('Verify Deployment') {
             steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-devops-creds'
+                ]]) {
 
-                sh 'kubectl get pods -n stackly'
-                sh 'kubectl get svc -n stackly'
+                  sh """
+                  aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
 
-                sh 'kubectl rollout status deployment/frontend -n stackly'
-                sh 'kubectl rollout status deployment/backend -n stackly'
+                  kubectl get pods -n stackly
+                  kubectl get svc -n stackly
+
+                  kubectl rollout status deployment/frontend -n stackly
+                  kubectl rollout status deployment/backend -n stackly
+                 """
+                }
             }
         }
-    }
 
+    
     post {
 
         success {
