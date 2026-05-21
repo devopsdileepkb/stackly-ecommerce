@@ -2,12 +2,12 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: frontend
-  namespace: stackly-ecommerce
+  namespace: stackly
   annotations:
     kubernetes.io/ingress.class: nginx
 spec:
   rules:
-  - host: stackly-ecommerce.local
+  - host: stackly.local
     http:
       paths:
       - path: /
