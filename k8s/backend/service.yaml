@@ -1,17 +1,11 @@
-backend:
-  build: ./backend
-  container_name: backend
-  restart: always
-
-  depends_on:
-    mysql:
-      condition: service_healthy
-
-  environment:
-    DB_HOST: mysql
-    DB_USER: root
-    DB_PASSWORD: root
-    DB_NAME: ecommerce
-
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector:
+    app: backend
   ports:
-    - "5000:5000"
+    - port: 5000
+      targetPort: 5000
+  type: ClusterIP

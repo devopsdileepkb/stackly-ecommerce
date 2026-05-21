@@ -1,3 +1,8 @@
-MYSQL_HOST: "ecommerce-db.cbaek04yg637.ap-south-1.rds.amazonaws.com"
-MYSQL_DB: "ecommerce"
-MYSQL_PORT: "3306"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  MYSQL_HOST: "ecommerce-db.cbaek04yg637.ap-south-1.rds.amazonaws.com"
+  MYSQL_DB: "ecommerce"
+  MYSQL_PORT: "3306"
