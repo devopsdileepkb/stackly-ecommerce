@@ -36,31 +36,34 @@ pipeline {
                 ]]) {
 
                     sh """
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     """
                 }
             }
         }
 
         stage('Build & Tag Images') {
+
             parallel {
 
                 stage('Frontend') {
                     steps {
+
                         sh """
                         docker build -t frontend ./frontend
-                        docker tag frontend:latest ${FRONTEND_REPO}:${IMAGE_TAG}
-                        docker tag frontend:latest ${FRONTEND_REPO}:latest
+                        docker tag frontend:latest $FRONTEND_REPO:$IMAGE_TAG
+                        docker tag frontend:latest $FRONTEND_REPO:latest
                         """
                     }
                 }
 
                 stage('Backend') {
                     steps {
+
                         sh """
                         docker build -t backend ./backend
-                        docker tag backend:latest ${BACKEND_REPO}:${IMAGE_TAG}
-                        docker tag backend:latest ${BACKEND_REPO}:latest
+                        docker tag backend:latest $BACKEND_REPO:$IMAGE_TAG
+                        docker tag backend:latest $BACKEND_REPO:latest
                         """
                     }
                 }
@@ -68,39 +71,43 @@ pipeline {
         }
 
         stage('Push Images') {
+
             parallel {
 
                 stage('Frontend Push') {
                     steps {
+
                         sh """
-                        docker push ${FRONTEND_REPO}:${IMAGE_TAG}
-                        docker push ${FRONTEND_REPO}:latest
+                        docker push $FRONTEND_REPO:$IMAGE_TAG
+                        docker push $FRONTEND_REPO:latest
                         """
                     }
                 }
 
                 stage('Backend Push') {
                     steps {
+
                         sh """
-                        docker push ${BACKEND_REPO}:${IMAGE_TAG}
-                        docker push ${BACKEND_REPO}:latest
+                        docker push $BACKEND_REPO:$IMAGE_TAG
+                        docker push $BACKEND_REPO:latest
                         """
                     }
                 }
             }
         }
 
-    
-
         stage('Apply Kubernetes Manifests') {
+
             steps {
+
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
-                    sh """                    
+                    sh """
                     aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+
                     kubectl create namespace stackly --dry-run=client -o yaml | kubectl apply -f -
 
                     kubectl apply -f k8s/frontend-deployment.yaml -n stackly
@@ -113,43 +120,48 @@ pipeline {
         }
 
         stage('Update Kubernetes Deployment') {
+
             steps {
+
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
                     sh """
-                    aws eks update-kubeconfig --region ${AWS_REGION} --name stackly-cluster
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
 
-                    kubectl set image deployment/frontend frontend=${FRONTEND_REPO}:${IMAGE_TAG} -n stackly
+                    kubectl set image deployment/frontend frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
 
-                    kubectl set image deployment/backend backend=${BACKEND_REPO}:${IMAGE_TAG} -n stackly
+                    kubectl set image deployment/backend backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
                     """
                 }
             }
         }
+
         stage('Verify Deployment') {
+
             steps {
+
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
-                  sh """
-                  aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
+                    sh """
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
 
-                  kubectl get pods -n stackly
-                  kubectl get svc -n stackly
+                    kubectl get pods -n stackly
+                    kubectl get svc -n stackly
 
-                  kubectl rollout status deployment/frontend -n stackly
-                  kubectl rollout status deployment/backend -n stackly
-                 """
+                    kubectl rollout status deployment/frontend -n stackly
+                    kubectl rollout status deployment/backend -n stackly
+                    """
                 }
             }
         }
+    }
 
-    
     post {
 
         success {
