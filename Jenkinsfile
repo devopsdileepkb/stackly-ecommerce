@@ -98,8 +98,8 @@ pipeline {
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
-                    sh """
-                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
+                    sh """                
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
 
                     kubectl apply -f k8s/frontend-deployment.yaml -n stackly
                     kubectl apply -f k8s/backend-deployment.yaml -n stackly
@@ -117,14 +117,14 @@ pipeline {
                     credentialsId: 'aws-devops-creds'
                 ]]) {
 
-                    sh """
-                    aws eks update-kubeconfig --region $AWS_REGION --name stackly-cluster
+                    sh """                    
+                    aws eks update-kubeconfig --region ap-south-1 --name stackly-cluster
 
-                    kubectl set image deployment/frontend \
-                    frontend=$FRONTEND_REPO:$IMAGE_TAG -n stackly
+                    kubectl set image deployment/frontend \                    
+                    frontend=960862432033.dkr.ecr.ap-south-1.amazonaws.com/frontend:$IMAGE_TAG -n stackly
 
-                    kubectl set image deployment/backend \
-                    backend=$BACKEND_REPO:$IMAGE_TAG -n stackly
+                    kubectl set image deployment/backend \                    
+                    backend=960862432033.dkr.ecr.ap-south-1.amazonaws.com/backend:$IMAGE_TAG -n stackly
                     """
                 }
             }
