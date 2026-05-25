@@ -27,12 +27,12 @@ This project implements a full-stack e-commerce platform with:
 
 ### Database
 - MySQL 8.0
-
+    
 ### DevOps
 - Docker & Docker Compose
 - Kubernetes (K8s)
 - Jenkins for CI/CD
-- Prometheus for monitoring
+- Prometheus for monitoring    hi
 - Grafana for visualization
 
 ## Project Structure
